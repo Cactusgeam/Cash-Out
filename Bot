@@ -1,0 +1,94 @@
+
+import telebot from telebot import types
+
+API_TOKEN = '8011427037:AAHtEI6VPs8Vo_H_j7eHCtitJazPYK_fKTg' bot = telebot.TeleBot(API_TOKEN, parse_mode='Markdown')
+
+user_data = {} user_states = {}
+
+required_links = [ ("Join Group 1", "https://t.me/Blockchainbrotherrhood"), ("Join Group 2", "https://t.me/Theblockchainbrotherrhood"), ("Join Group 3", "https://t.me/adcbafrica"), ("Facebook Page 1", "https://www.facebook.com/share/18qWPY1Jbn/"), ("Facebook Page 2", "https://www.facebook.com/share/197NkYnorP/") ]
+
+def send_main_menu(user_id): markup = types.ReplyKeyboardMarkup(resize_keyboard=True) markup.row('💰 My Balance', '👥 Referrals') markup.row('💳 Set Wallet', '📤 Withdraw') bot.send_message(user_id, "Please choose an option:", reply_markup=markup)
+
+@bot.message_handler(commands=['start']) def start(message): user_id = message.from_user.id name = message.from_user.first_name args = message.text.split()
+
+if user_id not in user_data:
+    user_data[user_id] = {
+        'balance': 0,
+        'wallet': {},
+        'referrals': 0,
+        'invited_by': None,
+        'registered': False
+    }
+
+    if len(args) > 1:
+        ref = int(args[1])
+        if ref != user_id and ref in user_data and user_data[user_id]['invited_by'] is None:
+            user_data[user_id]['invited_by'] = ref
+            user_data[ref]['balance'] += 40
+            user_data[ref]['referrals'] += 1
+            bot.send_message(ref,
+                "🎉 NEW REFERRAL! 🎉\n🔥 You just got 1 new referral!\n💰 You've earned ₦40! Keep inviting to earn more!")
+
+user_states[user_id] = 'awaiting_join'
+markup = types.InlineKeyboardMarkup()
+for name, url in required_links:
+    markup.add(types.InlineKeyboardButton(text=name, url=url))
+markup.add(types.InlineKeyboardButton(text="✅ Joined All Links", callback_data="joined_all"))
+
+bot.send_message(user_id,
+    f"Welcome {name}!\n\nTo continue, please join all the groups and pages below:",
+    reply_markup=markup)
+
+@bot.callback_query_handler(func=lambda call: call.data == "joined_all") def joined_all_links(call): user_id = call.from_user.id if user_data[user_id]['registered']: bot.send_message(user_id, "You already registered.") send_main_menu(user_id) else: user_data[user_id]['registered'] = True user_states[user_id] = None bot.send_message(user_id, "Thank you! Registration complete.") send_main_menu(user_id)
+
+@bot.message_handler(func=lambda m: m.text == "💰 My Balance") def bal(message): user_id = message.from_user.id if user_data[user_id]['registered']: bot.send_message(user_id, f"Your current balance is ₦{user_data[user_id]['balance']}") else: bot.send_message(user_id, "Please complete registration first.")
+
+@bot.message_handler(func=lambda m: m.text == "👥 Referrals") def refs(message): user_id = message.from_user.id if user_data[user_id]['registered']: count = user_data[user_id]['referrals'] bot.send_message(user_id, f"You have {count} referrals.\nYour link:\nhttps://t.me/Cashout10_bot?start={user_id}") else: bot.send_message(user_id, "Please complete registration first.")
+
+@bot.message_handler(func=lambda m: m.text == "💳 Set Wallet") def set_wallet(message): user_id = message.from_user.id if user_data[user_id]['registered']: markup = types.ReplyKeyboardMarkup(resize_keyboard=True) markup.add("Opay", "Palmpay") bot.send_message(user_id, "Choose your wallet type:", reply_markup=markup) user_states[user_id] = 'awaiting_wallet_type' else: bot.send_message(user_id, "Please complete registration first.")
+
+@bot.message_handler(func=lambda m: m.text == "📤 Withdraw") def withdraw(message): user_id = message.from_user.id if user_data[user_id]['registered']: if user_data[user_id]['balance'] < 400: bot.send_message(user_id, "You need at least ₦400 to withdraw.") else: bot.send_message(user_id, "Enter the amount to withdraw:") user_states[user_id] = 'awaiting_withdraw_amount' else: bot.send_message(user_id, "Please complete registration first.")
+
+@bot.message_handler(func=lambda m: True) def all_text(message): user_id = message.from_user.id text = message.text.strip()
+
+if user_states.get(user_id) == 'awaiting_wallet_type':
+    if text not in ["Opay", "Palmpay"]:
+        bot.send_message(user_id, "Invalid choice. Choose Opay or Palmpay.")
+        return
+    user_data[user_id]['wallet']['type'] = text
+    bot.send_message(user_id, "Enter your account number:")
+    user_states[user_id] = 'awaiting_wallet_number'
+
+elif user_states.get(user_id) == 'awaiting_wallet_number':
+    user_data[user_id]['wallet']['number'] = text
+    bot.send_message(user_id, "Enter your full name:")
+    user_states[user_id] = 'awaiting_wallet_name'
+
+elif user_states.get(user_id) == 'awaiting_wallet_name':
+    user_data[user_id]['wallet']['name'] = text
+    wallet = user_data[user_id]['wallet']
+    bot.send_message(user_id,
+        f"Wallet set:\nType: {wallet['type']}\nAcct: {wallet['number']}\nName: {wallet['name']}\n\nThank you. Wallet saved.")
+    user_states[user_id] = None
+
+elif user_states.get(user_id) == 'awaiting_withdraw_amount':
+    try:
+        amt = int(text)
+        if amt < 400:
+            bot.send_message(user_id, "Minimum withdrawal is ₦400.")
+        elif amt > user_data[user_id]['balance']:
+            bot.send_message(user_id, "You do not have enough balance.")
+        else:
+            user_data[user_id]['balance'] -= amt
+            bot.send_message(user_id,
+                f"Withdrawal request received!\nYou will receive your money in your bank within 12 hours.\nThanks for using Cash Out.")
+    except:
+        bot.send_message(user_id, "Please enter a valid amount.")
+    user_states[user_id] = None
+
+else:
+    bot.send_message(user_id, "Sorry, I didn't understand that. Please use the buttons.")
+
+print("Bot is running...") bot.polling(non_stop=True)
+
+
